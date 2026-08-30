@@ -20,7 +20,7 @@ Both existing crates use Unicode ICU segmenters (sentences, words, graphemes) fo
 
 ### Results — Rust vs Python
 
-Benchmarked on Star Wars script-style text and a 21.7M character real-text corpus
+Benchmarked on script-style text and a 21.7M character real-text corpus
 (Shakespeare + War and Peace + Les Misérables + KJV Bible + other PG works combined)
 with separators `["\nINT.", "\nEXT.", "\n\n", "\n", " ", ""]`, chunk_size=200, chunk_overlap=50:
 
@@ -197,12 +197,8 @@ This is correct because oversized splits are independent recursive calls on disj
 The parallel API is benchmarked by `benches/parallel_bench.rs`:
 
 ```bash
-# Sequential vs parallel on generated Star Wars text
 cargo build --release --bench parallel_bench --features rayon
-target/release/deps/parallel_bench-*  # auto-generates 100/500/1000/5000 scene texts
-
-# Also benchmarks the 20M+ char corpus if available
-BENCH_TEXT_FILE=/tmp/combined_20m_final.txt target/release/deps/parallel_bench-*
+target/release/deps/parallel_bench-*  # auto-generates test texts
 ```
 
 **Results (rayon on multi-core CPU)**:
@@ -223,74 +219,49 @@ Open `docs/benchmark_comparison.html` in a browser to view an interactive Chart.
 - **Rust vs Python** — bar chart comparing recursive-text-splitter vs langchain-text-splitters
 - **Sequential vs Parallel** — bar chart comparing single-core vs multi-core (rayon) Rust splitting
 
-An interactive HTML comparison chart is at `docs/benchmark_comparison.html`.
+## With Ollama + Local Embeddings (RAG)
 
-## With Ollama + Local Qwen3 (Star Wars RAG)
-
-This crate is used in the companion project [sw-expert-rust](../../sw-expert-rust) — a pure-Rust RAG pipeline of the Star Wars Movie Script Expert using **local Ollama Qwen3 embeddings** (no API keys needed).
+This crate integrates with [Ollama](https://ollama.com/) for local embeddings — no external API keys needed. Use it with any local embedding model:
 
 ### Prerequisites
 
 ```bash
 # Install Ollama
-brew install ollama
+curl -fsSL https://ollama.com/install.sh | sh
 ollama serve
 
-# Pull Qwen3 models
-ollama pull qwen3-embedding:latest   # for embeddings (384-dim)
-ollama pull qwen3:latest             # for chat LLM
+# Pull a local embedding model
+ollama pull nomic-embed-text    # 768-dim (default)
+ollama pull qwen3-embed:latest  # 128-dim (Qwen3)
 ```
 
 ### Cargo.toml
 
 ```toml
 [dependencies]
-recursive-text-splitter = { path = "../recursive-text-splitter", features = ["rayon"] }
+recursive-text-splitter = { version = "0.1", features = ["rayon"] }
 reqwest       = { version = "0.12", features = ["json"] }
-scraper       = "0.22"
-qdrant-client = "1.19"
-serde         = { version = "1", features = ["derive"] }
 serde_json    = "1"
 anyhow        = "1"
-futures-util  = "0.3"
-
-[features]
-rayon = ["recursive-text-splitter/rayon"]
+tokio         = { version = "1", features = ["full"] }
 ```
 
-### Usage in the RAG pipeline
+### Full RAG pipeline
 
 ```rust
-use recursive_text_splitter::RecursiveCharacterTextSplitter;
+use recursive_text_splitter::{RecursiveCharacterTextSplitter, ParallelStrategy};
 use serde::Deserialize;
 
-// Same separators as the Python RecursiveCharacterTextSplitter
-const SEPARATORS: &[&str] = &["\nINT.", "\nEXT.", "\n\n", "\n", " ", ""];
-
-// Split scraped Star Wars script text into chunks
-let splitter = RecursiveCharacterTextSplitter::new()
-    .with_separators(SEPARATORS.to_vec())
-    .with_chunk_size(2500)  // matches Python default
-    .with_chunk_overlap(250)
-    .with_add_start_index(true);
-
-// Use parallel strategy for large scripts (requires --features rayon)
-#[cfg(feature = "rayon")]
-let splitter = splitter.with_strategy::<recursive_text_splitter::ParallelStrategy>();
-
-let chunks = splitter.split_text(script_text);
-
-// Generate embeddings via Ollama Qwen3
 #[derive(Deserialize)]
 struct OllamaEmbedResponse {
     embedding: Vec<f32>,
 }
 
 async fn embed_text(http: &reqwest::Client, text: &str) -> Vec<f32> {
-    let resp = http
+    http
         .post("http://localhost:11434/api/embed")
         .json(&serde_json::json!({
-            "model": "qwen3-embedding:latest",
+            "model": "nomic-embed-text",
             "input": text,
         }))
         .send()
@@ -299,58 +270,48 @@ async fn embed_text(http: &reqwest::Client, text: &str) -> Vec<f32> {
         .json::<OllamaEmbedResponse>()
         .await
         .unwrap()
-        .embedding;
-    resp
+        .embedding
 }
 
-for chunk in &chunks {
-    let embedding = embed_text(http, &chunk.page_content).await;
-    // Store (chunk.page_content, embedding) in Qdrant
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let text = std::fs::read_to_string("data/my_documents.txt")?;
+
+    // 1. Split text with custom separators
+    let splitter = RecursiveCharacterTextSplitter::new()
+        .with_separators(vec!["\nINT.", "\nEXT.", "\n\n", "\n", " ", ""])
+        .with_chunk_size(2500)
+        .with_chunk_overlap(250)
+        .with_add_start_index(true)
+        .with_strategy::<ParallelStrategy>();
+
+    let chunks = splitter.split_text(&text);
+
+    // 2. Generate embeddings via Ollama
+    let http = reqwest::Client::new();
+    let embedded: Vec<(usize, Vec<f32>)> = futures::future::join_all(
+        chunks.iter().enumerate().map(|(i, chunk)| async {
+            let embedding = embed_text(&http, &chunk.page_content).await;
+            (i, embedding)
+        })
+    ).await;
+
+    // 3. Store in your vector database of choice (Qdrant, Pinecone, etc.)
+    println!("{} chunks embedded and ready to index", embedded.len());
+
+    Ok(())
 }
 ```
 
-### Qdrant vector store
+### With `rig` (optional feature)
 
-The Star Wars RAG project uses `qdrant-client` to store embeddings in a local Qdrant server (via Docker):
-```bash
-docker run -p 6333:6333 qdrant/qdrant
-```
+Enable the `rig` feature for integration with the rig framework:
 
-For fully embedded local persistence (no Docker needed), use `qdrant-edge`:
 ```toml
-qdrant-edge = "0.3"
-```
-
-### Running the Star Wars Movie Expert
-
-```bash
-# Terminal 1: Start Ollama
-ollama serve
-
-# Terminal 2: Start Qdrant (or skip if using qdrant-edge)
-docker run -p 6333:6333 qdrant/qdrant
-
-# Terminal 3: Build and run the RAG pipeline
-cargo run --release --features rayon
-# First run: scrapes IMSDb scripts, chunks them, embeds via Qwen3, indexes to Qdrant
-# Then interactive: ask questions about Star Wars scripts!
-```
-
-## Verification
-
-All outputs are verified against Python `langchain-text-splitters` 0.3.11, and parallel/sequential APIs produce identical results:
-
-```
-running 9 python_compat tests
-test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
-
-running 3 par_correctness tests (requires --features rayon)
-test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
-
-running 16 unit tests
-test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+[dependencies]
+recursive-text-splitter = { version = "0.1", features = ["rayon", "rig"] }
 ```
 
 ## License
 
-MIT — matches the [Python Star Wars Movie Expert](https://github.com/andrisgauracs/Star-Wars-Movie-Expert) project's MIT license.
+MIT
