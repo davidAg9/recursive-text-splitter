@@ -1,6 +1,6 @@
 [package]
 name = "recursive-text-splitter"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 rust-version = "1.85"
 description = "A high-performance recursive character text splitter that mirrors Python LangChain's RecursiveCharacterTextSplitter"
@@ -9,7 +9,7 @@ repository = "https://github.com/davidAg9/recursive-text-splitter"
 homepage = "https://github.com/davidAg9/recursive-text-splitter"
 documentation = "https://docs.rs/recursive-text-splitter"
 readme = "README.md"
-keywords = ["text-splitting", "nlp", "rag", "langchain"]
+keywords = ["text-splitting", "nlp", "rag", "langchain","rig"]
 categories = ["text-processing", "parsing"]
 
 [features]
