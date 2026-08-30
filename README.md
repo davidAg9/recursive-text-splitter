@@ -20,7 +20,7 @@ Both existing crates use Unicode ICU segmenters (sentences, words, graphemes) fo
 
 ### Results — Rust vs Python
 
-Benchmarked on script-style text and a 21.7M character real-text corpus
+Benchmarked on Star Wars script-style text and a 21.7M character real-text corpus
 (Shakespeare + War and Peace + Les Misérables + KJV Bible + other PG works combined)
 with separators `["\nINT.", "\nEXT.", "\n\n", "\n", " ", ""]`, chunk_size=200, chunk_overlap=50:
 
