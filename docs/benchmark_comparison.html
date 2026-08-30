@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>recursive-text-splitter: Benchmark Results</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 24px;
+            background: var(--card, #fff);
+            color: var(--foreground, #1a1a1a);
+        }
+        h1 {
+            font-size: 1.75rem;
+            margin-bottom: 8px;
+        }
+        .subtitle {
+            color: var(--muted-foreground, #666);
+            margin-bottom: 24px;
+        }
+        .summary {
+            display: flex;
+            gap: 24px;
+            margin-bottom: 32px;
+            flex-wrap: wrap;
+        }
+        .stat {
+            background: var(--muted, #f5f5f5);
+            padding: 16px 24px;
+            border-radius: 8px;
+            text-align: center;
+            min-width: 140px;
+        }
+        .stat-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--accent, #0070f3);
+        }
+        .stat-label {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 4px;
+        }
+        .chart-container {
+            margin-bottom: 48px;
+        }
+        h2 {
+            font-size: 1.25rem;
+            margin-bottom: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>recursive-text-splitter Benchmark</h1>
+    <p class="subtitle">Rust vs Python (langchain-text-splitters) and Sequential vs Parallel Rust — 5 test cases, largest: 21,711,529 chars</p>
+
+    <div class="summary">
+        <div class="stat">
+            <div class="stat-value">2.84x</div>
+            <div class="stat-label">Rust Speedup vs Python (largest)</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">2.84x</div>
+            <div class="stat-label">Min Speedup vs Python</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">88.2ms</div>
+            <div class="stat-label">Rust Time (21M chars)</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">250ms</div>
+            <div class="stat-label">Python Time (21M chars)</div>
+        </div>
+    </div>
+
+    <div class="chart-container">
+        <h2>Rust vs Python (langchain-text-splitters)</h2>
+        <canvas id="rustVsPythonChart" height="400"></canvas>
+    </div>
+
+    <div class="chart-container">
+        <h2>Parallel Speedup (rayon) vs Sequential</h2>
+        <p><em>Same output, multi-core — parallelism helps on large texts with many oversized splits.</em></p>
+        <canvas id="parallelChart" height="300"></canvas>
+    </div>
+
+    <script>
+        // Rust vs Python chart
+        new Chart(document.getElementById('rustVsPythonChart'), {
+            type: 'bar',
+            data: {
+                labels: ['gen (30,670 chars)', 'gen (154,670 chars)', 'gen (309,670 chars)', 'gen (1,561,670 chars)', '21.7M chars'],
+                datasets: [
+                    {
+                        label: 'Rust (recursive-text-splitter)',
+                        data: [0.051, 0.283, 0.491, 2.324, 88.18],
+                        backgroundColor: 'rgba(10, 173, 137, 0.8)',
+                        borderColor: 'rgba(10, 173, 137, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Python (langchain-text-splitters)',
+                        data: [0.301, 1.44, 2.89, 14.7, 250.0],
+                        backgroundColor: 'rgba(255, 159, 64, 0.8)',
+                        borderColor: 'rgba(255, 159, 64, 1)',
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                indexAxis: 'y',
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Average time per split (ms, lower is better) — 1 iteration for 20M+ char file'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + context.raw.toFixed(2) + 'ms';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Average time (ms)'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Input size'
+                        }
+                    }
+                }
+            }
+        });
+
+        // Parallel vs Sequential chart
+        new Chart(document.getElementById('parallelChart'), {
+            type: 'bar',
+            data: {
+                labels: ['gen (30,670 chars)', 'gen (154,670 chars)', 'gen (309,670 chars)', 'large (1,561,670 chars)', 'large (21,711,529 chars)'],
+                datasets: [
+                    {
+                        label: 'Sequential (single-core)',
+                        data: [0.048, 0.229, 0.46, 2.418, 73.844],
+                        backgroundColor: 'rgba(10, 173, 137, 0.8)',
+                        borderColor: 'rgba(10, 173, 137, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Parallel (rayon, multi-core)',
+                        data: [0.117, 0.296, 0.463, 1.842, 51.136],
+                        backgroundColor: 'rgba(96, 175, 255, 0.8)',
+                        borderColor: 'rgba(33, 150, 243, 1)',
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                indexAxis: 'y',
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Sequential vs Parallel Rust (ms, lower is better)'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + context.raw.toFixed(2) + 'ms';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Average time (ms)'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Input size'
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>

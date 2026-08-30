@@ -1,0 +1,48 @@
+[package]
+name = "recursive-text-splitter"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "A high-performance recursive character text splitter that mirrors Python LangChain's RecursiveCharacterTextSplitter"
+license = "MIT"
+repository = "https://github.com/davidAg9/recursive-text-splitter"
+homepage = "https://github.com/davidAg9/recursive-text-splitter"
+documentation = "https://docs.rs/recursive-text-splitter"
+readme = "README.md"
+keywords = ["text-splitting", "nlp", "rag", "langchain"]
+categories = ["text-processing", "parsing"]
+
+[features]
+default = []
+rayon = ["dep:rayon"]
+rig = ["dep:rig"]
+rig-types = ["dep:rig"] # alias for backward compat
+
+[dependencies]
+rayon = { version = "1", optional = true }
+rig = { version = "0.42", optional = true, default-features = false, features = ["rayon"] }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "splitter_bench"
+harness = false
+
+[[bench]]
+name = "cross_lang_bench"
+harness = false
+
+[[bench]]
+name = "parallel_bench"
+harness = false
+required-features = ["rayon"]
+
+[[test]]
+name = "par_correctness"
+path = "tests/par_correctness.rs"
+required-features = ["rayon"]
+
+[[test]]
+name = "python_compat"
+path = "tests/python_compat.rs"
